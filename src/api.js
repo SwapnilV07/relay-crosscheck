@@ -1,7 +1,8 @@
 "use strict";
 /* Minimal Relay API client. Uses Node's built-in fetch (Node 18+). No dependencies. */
 
-const BASE = process.env.RELAY_API_URL || "https://api.relay.link";
+const IN_NODE = typeof process !== "undefined" && !!(process.versions && process.versions.node);
+const BASE = (IN_NODE && process.env.RELAY_API_URL) || "https://api.relay.link";
 
 class ApiError extends Error {
   constructor(message, status, body) { super(message); this.status = status; this.body = body; }
@@ -10,14 +11,15 @@ class ApiError extends Error {
 async function get(path, params = {}, { apiKey, retries = 2 } = {}) {
   const url = new URL(path, BASE);
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
-  const headers = { accept: "application/json", "user-agent": "relay-crosscheck" };
+  // Browsers forbid setting user-agent, and any extra header costs a CORS preflight, so only Node sends it.
+  const headers = IN_NODE ? { accept: "application/json", "user-agent": "relay-crosscheck" } : { accept: "application/json" };
   if (apiKey) headers["x-api-key"] = apiKey;
   for (let attempt = 0; ; attempt++) {
     let res;
     try { res = await fetch(url, { headers }); }
     catch (e) {
       if (attempt < retries) { await sleep(800 * (attempt + 1)); continue; }
-      throw new ApiError("Could not reach " + url.host + ": " + (e.cause && e.cause.code || e.message), 0, null);
+      throw new ApiError("Could not reach " + url.host + ": " + ((e.cause && e.cause.code) || e.message), 0, null);
     }
     const text = await res.text();
     let body = null; try { body = text ? JSON.parse(text) : null; } catch { body = text; }

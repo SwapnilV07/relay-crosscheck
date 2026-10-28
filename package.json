@@ -5,7 +5,7 @@
   "bin": { "relay-crosscheck": "bin/relay-crosscheck.js" },
   "main": "src/index.js",
   "files": ["bin", "src", "examples", "action.yml", "README.md", "LICENSE"],
-  "scripts": { "test": "node --test test/relay-crosscheck.test.js" },
+  "scripts": { "test": "node --test test/relay-crosscheck.test.js", "build:web": "node scripts/build-web.js", "watch": "node scripts/watch-relay.js --dry-run" },
   "engines": { "node": ">=18" },
   "keywords": ["relay", "relay.link", "crosschain", "bridge", "support", "lint"],
   "author": "Swapnil Vhangunde",

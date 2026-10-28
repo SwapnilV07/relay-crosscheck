@@ -1,0 +1,4 @@
+{
+  "changelogCoveredThrough": "2026-10-28",
+  "notes": "Every Relay changelog entry up to this date has been reviewed, and rules were added where integrators need to act. Move this date forward after closing a relay-watch issue."
+}

@@ -27,3 +27,8 @@ export async function pollStatus(requestId: string) {
     await new Promise(done => setTimeout(done, 3000));
   }
 }
+
+export async function usdPrice(chainId: number, address: string) {
+  const r = await fetch(`https://api.relay.link/currencies/token/price/v2?chainId=${chainId}&address=${address}`);
+  return Number((await r.json()).price);
+}

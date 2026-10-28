@@ -11,6 +11,7 @@ const engine = require("../src/engine");
 const { scan, toSarif } = require("../src/scan");
 const health = require("../src/health");
 const report = require("../src/report");
+const NODE_FETCH = global.fetch; // some tests below replace fetch with a mock
 
 /* ---------- engine ---------- */
 test("reason table covers exactly the fail reasons in Relay's API schema", () => {
@@ -33,7 +34,7 @@ test("diagnoses a real successful transfer with a gas top-up", () => {
 });
 
 /* ---------- scan ---------- */
-const LEGACY_EXPECTED = ["fallback-type-removed", "include-protocol-signature", "old-contract-address", "quote-without-api-key", "slippage-format", "strict-deposit-without-refundto", "requests-v2", "api-key-in-url", "failure-treated-as-final", "fast-polling", "no-refund-handling", "old-sdk-package", "webhook-without-signature", "delayed-status", "ignored-liquidity-params", "na-string-check", "outdated-sdk", "tx-hash-field", "v2-response-fields"];
+const LEGACY_EXPECTED = ["fallback-type-removed", "include-protocol-signature", "old-contract-address", "quote-without-api-key", "slippage-format", "strict-deposit-without-refundto", "requests-v2", "api-key-in-url", "failure-treated-as-final", "fast-polling", "no-refund-handling", "old-sdk-package", "webhook-without-signature", "delayed-status", "ignored-liquidity-params", "na-string-check", "outdated-sdk", "tx-hash-field", "v2-response-fields", "token-price-v1", "config-v2-retiring", "token-price-number"];
 
 test("scan finds every planted problem in the legacy app", () => {
   const r = scan(FX("legacy-app"), { today: "2026-10-29", includeTests: true });
@@ -243,4 +244,83 @@ test("CLI: bad arguments give a clear error and exit 2", () => {
   const r = spawnSync("node", [CLI, "health"], { encoding: "utf8" });
   assert.equal(r.status, 2);
   assert.match(r.stderr, /Give a source/);
+});
+
+/* ---------- web app bundle ---------- */
+test("web: docs/crosscheck.js is up to date with src/", () => {
+  const { build, OUT } = require("../scripts/build-web");
+  assert.equal(fs.readFileSync(OUT, "utf8"), build(), "run: node scripts/build-web.js");
+});
+
+test("web: the browser bundle gives the same scan and health results as the command line", () => {
+  const vm = require("vm");
+  const ctx = { console, URL, setTimeout }; ctx.window = ctx; vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(ROOT, "docs", "crosscheck.js"), "utf8"), ctx);
+  const W = ctx.RelayCrosscheck;
+  const files = W.examples.legacyApp.filter(f => W.scan.wantPath(f.path, { includeTests: true })).map(f => W.scan.prepare(f.path, f.text)).filter(Boolean);
+  const web = W.scan.scanFiles(files, { today: "2026-10-29" });
+  const cli = scan(FX("legacy-app"), { today: "2026-10-29", includeTests: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(web.findings)), JSON.parse(JSON.stringify(cli.findings.map(f => ({ ...f, locations: f.locations.map(l => ({ ...l, file: l.file.split(path.sep).join("/") })) })))));
+  const a = W.health.analyze(W.health.loadCounts(W.examples.pumpfunDailyCsv), { direction: "buy" });
+  assert.equal(a.errors, 11496);
+  assert.equal(W.scan.RULE_COUNT, require("../src/scan-core").RULE_COUNT);
+});
+
+/* ---------- Relay watch ---------- */
+const watch = require("../scripts/watch-relay");
+const DOCS_FX = p => fs.readFileSync(FX(path.join("relay-docs-2026-10-29", p)), "utf8");
+
+test("watch: parses Relay's changelog into dated entries with change kinds", () => {
+  const entries = watch.parseChangelog(DOCS_FX("changelog.mdx"));
+  assert.equal(entries.length, 8);
+  assert.equal(entries[0].date, "2026-10-28");
+  const kit = entries.find(e => e.date === "2026-10-26");
+  assert.ok(kit.kinds.Breaking.some(b => /useRelayConfig/.test(b)), "a RelayKit major version counts as breaking");
+  const api = entries.find(e => e.date === "2026-10-21");
+  assert.equal(api.kinds.Breaking.length, 3);
+});
+
+test("watch: flags only entries after the reviewed date, and nothing when up to date", () => {
+  const changelog = DOCS_FX("changelog.mdx"), errorsDoc = DOCS_FX("execution-errors.mdx");
+  const now = watch.findGaps({ changelog, errorsDoc, coverage: JSON.parse(fs.readFileSync(path.join(ROOT, "watch", "coverage.json"), "utf8")) });
+  assert.deepEqual(now.gaps, [], "every published change is reviewed");
+  const older = watch.findGaps({ changelog, errorsDoc, coverage: { changelogCoveredThrough: "2026-10-20" } });
+  assert.deepEqual(older.gaps.map(g => g.key), ["2026-10-28", "2026-10-26", "2026-10-23", "2026-10-21"]);
+  assert.equal(older.gaps.find(g => g.key === "2026-10-23").priority, "review", "an Added/Changed-only entry is low priority");
+  const router = watch.findGaps({ changelog, errorsDoc, coverage: { changelogCoveredThrough: "2026-10-13" } }).gaps.find(g => g.key === "2026-10-14");
+  assert.ok(!/doesn't know yet/.test(router.body), "the v3.2 router addresses are already known");
+});
+
+test("watch: notices a fail reason Relay added to its docs or API schema", () => {
+  const errorsDoc = DOCS_FX("execution-errors.mdx") + "\n| `BRAND_NEW_REASON` | Something new. |\n";
+  const schema = { components: { schemas: { Req: { properties: { failReason: { type: "string", enum: Object.keys(engine.ERRORS).concat("SCHEMA_ONLY_REASON") } } } } } };
+  assert.deepEqual(watch.parseSchemaCodes(schema).filter(c => !engine.ERRORS[c]), ["SCHEMA_ONLY_REASON"]);
+  const { gaps } = watch.findGaps({ changelog: DOCS_FX("changelog.mdx"), errorsDoc, schema, coverage: { changelogCoveredThrough: "2099-01-01" } });
+  assert.equal(gaps.length, 1);
+  assert.match(gaps[0].title, /BRAND_NEW_REASON, SCHEMA_ONLY_REASON/);
+});
+
+test("watch: opens each issue once and skips ones that already exist", async () => {
+  const http = require("http");
+  const seen = [];
+  const server = http.createServer((req, res) => {
+    let body = ""; req.on("data", c => (body += c)); req.on("end", () => {
+      seen.push({ method: req.method, url: req.url, auth: req.headers.authorization, body: body && JSON.parse(body) });
+      res.setHeader("content-type", "application/json");
+      if (req.method === "POST" && req.url.endsWith("/labels")) { res.statusCode = 422; return res.end(JSON.stringify({ message: "already_exists" })); }
+      if (req.method === "GET") return res.end(JSON.stringify([{ title: "Already open" }]));
+      res.statusCode = 201; res.end(JSON.stringify({ html_url: "https://github.com/o/r/issues/7" }));
+    });
+  });
+  await new Promise(r => server.listen(0, r));
+  process.env.GITHUB_API_URL = "http://127.0.0.1:" + server.address().port;
+  global.fetch = NODE_FETCH;
+  try {
+    const opened = await watch.openIssues([{ title: "Already open", body: "x" }, { title: "New one", body: "y" }], { repo: "o/r", token: "t" });
+    assert.deepEqual(opened.map(o => o.title), ["New one"]);
+    const posts = seen.filter(s => s.method === "POST" && s.url === "/repos/o/r/issues");
+    assert.equal(posts.length, 1);
+    assert.deepEqual(posts[0].body.labels, ["relay-watch"]);
+    assert.equal(posts[0].auth, "Bearer t");
+  } finally { delete process.env.GITHUB_API_URL; server.close(); }
 });

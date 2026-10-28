@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Relay Crosscheck</title>
+<meta name="description" content="Support tooling for Relay integrations: diagnose a transfer, scan an integration for breaking changes, and check an integrator's error rates.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d6b62'/%3E%3Cpath d='M8 11h11l-3-3M24 21H13l3 3' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="app.css">
+<script>try{var t=localStorage.getItem("rc-theme");if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="./" aria-label="Relay Crosscheck home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" class="brand-bg"/><path d="M8 11h11l-3-3M24 21H13l3 3" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Relay Crosscheck</span>
+    </a>
+    <nav class="top-links">
+      <a href="https://github.com/SwapnilV07/relay-crosscheck" target="_blank" rel="noopener">GitHub</a>
+      <button type="button" class="icon-btn" id="theme" aria-label="Switch between light and dark">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="intro">
+    <h1>Catch Relay problems before they become tickets.</h1>
+    <p>Three tools for the people who support Relay integrations. Everything runs in your browser. Nothing is sent anywhere except Relay's public API and GitHub.</p>
+  </section>
+
+  <div class="tabs" role="tablist" aria-label="Tools">
+    <button role="tab" id="tab-ticket" aria-controls="panel-ticket" aria-selected="true" data-tab="ticket">
+      <b>Ticket</b><span>What happened to this transfer?</span>
+    </button>
+    <button role="tab" id="tab-scan" aria-controls="panel-scan" aria-selected="false" data-tab="scan" tabindex="-1">
+      <b>Scan</b><span>Will this integration break?</span>
+    </button>
+    <button role="tab" id="tab-health" aria-controls="panel-health" aria-selected="false" data-tab="health" tabindex="-1">
+      <b>Health</b><span>Is this integrator in trouble?</span>
+    </button>
+  </div>
+
+  <!-- ============ Ticket ============ -->
+  <section class="panel" role="tabpanel" id="panel-ticket" aria-labelledby="tab-ticket">
+    <form id="ticket-form" class="ask" autocomplete="off">
+      <label for="ticket-q">Request ID, transaction hash, or wallet address</label>
+      <div class="row">
+        <input id="ticket-q" name="q" spellcheck="false" placeholder="0x…" required>
+        <button class="primary" type="submit">Look up</button>
+      </div>
+      <div class="chips"><span>Try:</span>
+        <button type="button" class="chip" data-ticket="0x17919601915dd5023b5721469f529e973c3ed86a2042c8363fd856c00078a739">A completed Base → Arbitrum transfer</button>
+      </div>
+      <details class="more">
+        <summary>Use a Relay API key</summary>
+        <label for="ticket-key">API key <span class="muted">(searches /requests/v3; kept only in this tab and sent only to api.relay.link)</span></label>
+        <input id="ticket-key" type="password" spellcheck="false" placeholder="Optional">
+      </details>
+    </form>
+    <div id="ticket-out" aria-live="polite"></div>
+  </section>
+
+  <!-- ============ Scan ============ -->
+  <section class="panel" role="tabpanel" id="panel-scan" aria-labelledby="tab-scan" hidden>
+    <form id="scan-form" class="ask" autocomplete="off">
+      <label for="scan-q">Public GitHub repository</label>
+      <div class="row">
+        <input id="scan-q" name="q" spellcheck="false" placeholder="owner/repo, or a github.com link to a repo or folder" required>
+        <button class="primary" type="submit">Scan</button>
+      </div>
+      <div class="chips"><span>Try:</span>
+        <button type="button" class="chip" data-scan="relayprotocol/relay-kit">RelayKit (Relay's own SDK and UI kit)</button>
+        <button type="button" class="chip" data-scan-example="legacy">A deliberately broken integration</button>
+      </div>
+      <div class="drop" id="scan-drop" tabindex="0" role="button" aria-label="Choose a folder of code to scan">
+        <input type="file" id="scan-folder" webkitdirectory directory multiple hidden>
+        <b>Or scan a folder from your computer</b>
+        <span>Drop it here or click to choose. Files are read in your browser and never uploaded.</span>
+      </div>
+      <label class="check"><input type="checkbox" id="scan-tests"> Include test and fixture files</label>
+    </form>
+    <div id="scan-out" aria-live="polite"></div>
+  </section>
+
+  <!-- ============ Health ============ -->
+  <section class="panel" role="tabpanel" id="panel-health" aria-labelledby="tab-health" hidden>
+    <form id="health-form" class="ask" autocomplete="off">
+      <div class="grid2">
+        <div>
+          <label for="health-name">Integrator name</label>
+          <input id="health-name" placeholder="e.g. Acme Wallet">
+        </div>
+        <div>
+          <label for="health-dir">Trades to include</label>
+          <select id="health-dir"><option value="">All</option><option value="buy">Buys only</option><option value="sell">Sells only</option></select>
+        </div>
+      </div>
+      <div class="drop" id="health-drop" tabindex="0" role="button" aria-label="Choose a CSV or JSON export">
+        <input type="file" id="health-file" accept=".csv,.json,text/csv,application/json" hidden>
+        <b>Drop an export here, or click to choose</b>
+        <span>A CSV of counts (day, chain, outcome, error label, rows), or saved /requests v2 or v3 JSON.</span>
+      </div>
+      <div class="chips"><span>Try:</span>
+        <button type="button" class="chip" data-health="pumpfun">Pump.fun's published Relay A/B data</button>
+      </div>
+      <details class="more">
+        <summary>Fetch live with a Relay API key</summary>
+        <div class="grid3">
+          <div><label for="health-key">API key</label><input id="health-key" type="password" spellcheck="false"></div>
+          <div><label for="health-app">App ID <span class="muted">(optional)</span></label><input id="health-app" spellcheck="false" placeholder="app_id_…"></div>
+          <div><label for="health-since">Period</label><select id="health-since"><option value="1">Last 24 hours</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option></select></div>
+        </div>
+        <button type="button" class="secondary" id="health-live">Fetch and analyse</button>
+      </details>
+    </form>
+    <div id="health-out" aria-live="polite"></div>
+  </section>
+
+  <footer class="foot">
+    <p>Built by Swapnil Vhangunde. Independent project, not an official Relay product. Rules come from Relay's <a href="https://docs.relay.link/changelog" target="_blank" rel="noopener">changelog</a> and docs, and a weekly check flags anything new.</p>
+    <p class="muted" id="ver"></p>
+  </footer>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="crosscheck.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
