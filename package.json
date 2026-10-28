@@ -1,0 +1,14 @@
+{
+  "name": "relay-crosscheck",
+  "version": "0.1.0",
+  "description": "Support tooling for Relay integrations: scan code for breaking changes, report integrator health, and diagnose tickets.",
+  "bin": { "relay-crosscheck": "bin/relay-crosscheck.js" },
+  "main": "src/index.js",
+  "files": ["bin", "src", "examples", "action.yml", "README.md", "LICENSE"],
+  "scripts": { "test": "node --test test/relay-crosscheck.test.js" },
+  "engines": { "node": ">=18" },
+  "keywords": ["relay", "relay.link", "crosschain", "bridge", "support", "lint"],
+  "author": "Swapnil Vhangunde",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/SwapnilV07/relay-crosscheck.git" }
+}

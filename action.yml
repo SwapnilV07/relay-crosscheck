@@ -1,0 +1,19 @@
+name: Relay Crosscheck
+description: Check a Relay integration for breaking changes, deprecated endpoints and risky status handling.
+author: Swapnil Vhangunde
+branding: { icon: activity, color: green }
+inputs:
+  path:
+    description: Folder to scan
+    default: "."
+  fail-on:
+    description: "Fail the job on: breaking, deadline, warning, info or none"
+    default: breaking
+  sarif:
+    description: Write SARIF to this file (upload it with github/codeql-action/upload-sarif to see findings on pull requests)
+    default: relay-crosscheck.sarif
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: node "$GITHUB_ACTION_PATH/bin/relay-crosscheck.js" scan "${{ inputs.path }}" --fail-on "${{ inputs.fail-on }}" --sarif "${{ inputs.sarif }}"
