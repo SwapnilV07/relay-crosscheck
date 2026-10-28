@@ -1,0 +1,25 @@
+Subject: Your Relay integration health, 2026-09-28 to 2026-10-07
+
+Hi Pump.fun team,
+
+We looked at 102,513 of your Relay buys from 2026-09-28 to 2026-10-07. 11.2% errored. Here's what we found and what each side can do.
+
+Days that stood out:
+- Robinhood Chain on 2026-09-29: errors on your side at 7.8%, against 3.5% on other days.
+- Base on 2026-10-01: errors on your side at 7.3%, against 4.1% on other days.
+- Base on 2026-09-29: errors on your side at 7.2%, against 4.1% on other days.
+
+What we're doing:
+- BNB Chain: errors on our side hit 10.4% of trades, against 2.4% on your other chains. We're escalating this to our engineering team and will update you.
+- Arc: errors on our side hit 12.5% of trades, against 5.9% on your other chains. We're escalating this to our engineering team and will update you.
+
+What you can fix on your side:
+- sponsorship (4,083 errors, 35.5% of all errors): if this is your fee-sponsorship balance running low, topping up the App Balance and setting a low-balance alert would stop these.
+
+One question for you:
+- What does the "sponsorship" label in your data mean? We've read it as your fee-sponsorship balance running short (SPONSOR_BALANCE_TOO_LOW). Is that right?
+
+Happy to go through this on a call. Reply here with any request IDs you want us to trace.
+
+Thanks,
+Relay Support

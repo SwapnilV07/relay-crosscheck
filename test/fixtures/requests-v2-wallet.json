@@ -1,0 +1,266 @@
+{
+ "requests": [
+  {
+   "id": "0x17919601915dd5023b5721469f529e973c3ed86a2042c8363fd856c00078a739",
+   "status": "success",
+   "user": "0x2cd09033f81a24baf491d114e078b9ee879411f7",
+   "recipient": "0x2cd09033F81a24bAF491d114E078b9eE879411f7",
+   "depositAddress": null,
+   "data": {
+    "slippageTolerance": "225",
+    "failReason": "N/A",
+    "refundFailReason": "N/A",
+    "inTxs": [
+     {
+      "hash": "0x45523241099aa91ebce667866cc0e3bac62c97fc7622fc9bb9340c11fe217722",
+      "chainId": 8453,
+      "timestamp": 1791960243,
+      "status": "success"
+     }
+    ],
+    "expandedPriceImpact": {
+     "quoted": {
+      "swap": {
+       "usd": "-0.008075"
+      },
+      "execution": {
+       "usd": "-0.026615"
+      },
+      "relay": {
+       "usd": "-0.002399"
+      },
+      "app": {
+       "usd": "0.000000"
+      }
+     },
+     "actual": {
+      "swap": {
+       "usd": "-0.031214"
+      },
+      "execution": {
+       "usd": "-0.004190"
+      },
+      "relay": {
+       "usd": "-0.002399"
+      },
+      "app": {
+       "usd": "0.000000"
+      }
+     }
+    },
+    "metadata": {
+     "sender": "0x2cd09033F81a24bAF491d114E078b9eE879411f7",
+     "currencyIn": {
+      "currency": {
+       "chainId": 8453,
+       "symbol": "USDC"
+      },
+      "amountFormatted": "4.0",
+      "amountUsd": "3.999508"
+     },
+     "currencyOut": {
+      "currency": {
+       "chainId": 42161,
+       "symbol": "ETH"
+      },
+      "amountFormatted": "0.001583342635104568",
+      "amountUsd": "3.961733"
+     },
+     "rate": "0.000395835658776142"
+    },
+    "timeEstimate": 1,
+    "outTxs": [
+     {
+      "hash": "0x3e85eca72b4731ce737894bda2315ba99bf1868d8040479bde5dbf6dfe1ebee2",
+      "chainId": 42161,
+      "timestamp": 1791960244,
+      "status": "success"
+     }
+    ]
+   },
+   "createdAt": "2026-10-14T06:44:01.737Z",
+   "updatedAt": "2026-10-14T06:44:34.293Z"
+  },
+  {
+   "id": "0x179188643067de12dd119069e9b49838d2cb754115c45897ed89f59b2360c041",
+   "status": "success",
+   "user": "0x2cd09033f81a24baf491d114e078b9ee879411f7",
+   "recipient": "0x2cd09033F81a24bAF491d114E078b9eE879411f7",
+   "depositAddress": null,
+   "data": {
+    "slippageTolerance": "200",
+    "failReason": "N/A",
+    "refundFailReason": "N/A",
+    "inTxs": [
+     {
+      "hash": "0x7cfaf10605bba3057bcd5bb105e7434e5230e944b48c9a51d37197d3ae7f2e14",
+      "chainId": 8453,
+      "timestamp": 1791886609,
+      "status": "success"
+     }
+    ],
+    "expandedPriceImpact": {
+     "quoted": {
+      "swap": {
+       "usd": "-0.000704"
+      },
+      "execution": {
+       "usd": "-2.040573"
+      },
+      "relay": {
+       "usd": "0.000000"
+      },
+      "app": {
+       "usd": "0.000000"
+      }
+     },
+     "actual": {
+      "swap": {
+       "usd": "-2.030283"
+      },
+      "execution": {
+       "usd": "-0.010790"
+      },
+      "relay": {
+       "usd": "0.000000"
+      },
+      "app": {
+       "usd": "0.000000"
+      }
+     }
+    },
+    "metadata": {
+     "sender": "0x2cd09033F81a24bAF491d114E078b9eE879411f7",
+     "currencyIn": {
+      "currency": {
+       "chainId": 8453,
+       "symbol": "USDC"
+      },
+      "amountFormatted": "5.0",
+      "amountUsd": "4.999350"
+     },
+     "currencyOut": {
+      "currency": {
+       "chainId": 42161,
+       "symbol": "USDC"
+      },
+      "amountFormatted": "2.958458",
+      "amountUsd": "2.957778"
+     },
+     "currencyGasTopup": {
+      "currency": {
+       "chainId": 42161,
+       "symbol": "ETH"
+      },
+      "amountFormatted": "0.000798637470487455",
+      "amountUsd": "1.999174"
+     },
+     "rate": "0.5916916"
+    },
+    "timeEstimate": 1,
+    "outTxs": [
+     {
+      "hash": "0x05a1cb8e44718391fe67b26549e7e182a705c49fb0d8fcdb53d63c243910417c",
+      "chainId": 42161,
+      "timestamp": 1791886609,
+      "status": "success"
+     }
+    ]
+   },
+   "createdAt": "2026-10-13T10:16:47.654Z",
+   "updatedAt": "2026-10-13T10:17:19.797Z"
+  },
+  {
+   "id": "0x179183127022aa0b5499099c798766d5f502837565eb628e50665740b07d67f7",
+   "status": "success",
+   "user": "0x2cd09033f81a24baf491d114e078b9ee879411f7",
+   "recipient": "0x2cd09033F81a24bAF491d114E078b9eE879411f7",
+   "depositAddress": null,
+   "data": {
+    "slippageTolerance": "200",
+    "failReason": "N/A",
+    "refundFailReason": "N/A",
+    "inTxs": [
+     {
+      "hash": "0x55871a90c3faf9fcfa979ad3ce7c36cae9455c2290222225e3075c228437b50c",
+      "chainId": 1,
+      "timestamp": 1791831371,
+      "status": "success"
+     }
+    ],
+    "expandedPriceImpact": {
+     "quoted": {
+      "swap": {
+       "usd": "-0.002259"
+      },
+      "execution": {
+       "usd": "-2.025365"
+      },
+      "relay": {
+       "usd": "0.000000"
+      },
+      "app": {
+       "usd": "0.000000"
+      }
+     },
+     "actual": {
+      "swap": {
+       "usd": "-0.002686"
+      },
+      "execution": {
+       "usd": "-2.024879"
+      },
+      "relay": {
+       "usd": "0.000000"
+      },
+      "app": {
+       "usd": "0.000000"
+      }
+     }
+    },
+    "metadata": {
+     "sender": "0x2cd09033F81a24bAF491d114E078b9eE879411f7",
+     "currencyIn": {
+      "currency": {
+       "chainId": 1,
+       "symbol": "USDC"
+      },
+      "amountFormatted": "22.0",
+      "amountUsd": "21.997536"
+     },
+     "currencyOut": {
+      "currency": {
+       "chainId": 8453,
+       "symbol": "USDC"
+      },
+      "amountFormatted": "19.972149",
+      "amountUsd": "19.969333"
+     },
+     "currencyGasTopup": {
+      "currency": {
+       "chainId": 8453,
+       "symbol": "ETH"
+      },
+      "amountFormatted": "0.000797688256357908",
+      "amountUsd": "1.996798"
+     },
+     "rate": "0.9078249545454546"
+    },
+    "timeEstimate": 2,
+    "outTxs": [
+     {
+      "hash": "0x4f448387015eb6a6b85d447ef8763ad83f74a7713f7d005ffb40802d9bdcf571",
+      "chainId": 8453,
+      "timestamp": 1791831375,
+      "status": "success"
+     }
+    ]
+   },
+   "createdAt": "2026-10-12T18:56:12.558Z",
+   "updatedAt": "2026-10-12T18:56:45.369Z"
+  }
+ ],
+ "deprecation": {
+  "message": "GET /requests/v2 is deprecated."
+ }
+}

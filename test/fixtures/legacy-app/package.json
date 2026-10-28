@@ -1,0 +1,8 @@
+{
+  "name": "legacy-bridge-app",
+  "dependencies": {
+    "@reservoir0x/relay-sdk": "^1.4.0",
+    "@relayprotocol/relay-kit-ui": "^9.2.0",
+    "viem": "^2.0.0"
+  }
+}

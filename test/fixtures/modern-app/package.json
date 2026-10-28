@@ -1,0 +1,7 @@
+{
+  "name": "modern-bridge-app",
+  "dependencies": {
+    "@relayprotocol/relay-sdk": "^8.0.4",
+    "@relayprotocol/relay-kit-ui": "^12.0.5"
+  }
+}

@@ -1,0 +1,118 @@
+Relay Crosscheck scan  5 files in /home/claude/relay-crosscheck/test/fixtures/legacy-app
+
+BREAKING  Reads details.fallbackType, removed from quote responses on 12 Oct 2026
+  src/relay.ts:27  if (quote.details?.fallbackType) console.log("fallback route");
+  Why: The field no longer appears on any response, so code that reads it gets undefined.
+  Fix: Remove the reference.
+  https://docs.relay.link/changelog
+
+BREAKING  Sends includeProtocolSignature, renamed to includeProtocolData on 2 Jul 2026
+  src/relay.ts:22  includeProtocolSignature: true,
+  Why: The old name is no longer honored, so the protocol data you expect is silently missing.
+  Fix: Rename the flag to includeProtocolData.
+  https://docs.relay.link/changelog
+
+BREAKING  Hardcodes a Relay contract that was replaced on 26 Oct 2026
+  src/relay.ts:5  const RELAY_ROUTER = "0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f"; // allowlisted spender  [v3 Router 0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f]
+  src/relay.ts:6  const APPROVAL_PROXY = "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be";  [v3 ApprovalProxy 0xccc88a9d1b4ed6b0eaba998850414b24f1c315be]
+  Why: Relay now routes through the v3.2 Router and ApprovalProxy. Approvals to the old proxy don't carry over, and allowlists that only contain old addresses reject new transactions.
+  Fix: Use the transaction targets returned by the quote, or read contracts from Get Chains. If you allowlist, allow both the v3 and v3.2 pairs during the transition.
+  https://docs.relay.link/references/api/api_resources/contract-addresses#migrating-to-the-new-router
+
+BREAKING  Calls the quote API without an x-api-key header
+  src/relay.ts:9  const res = await fetch(`${RELAY_API}/quote`, {
+  Why: Quotes with a referrer need a valid key since 3 Sep 2026 (401 UNAUTHORIZED_QUOTE), and the docs say every /quote/v2 request needs one from 2 Oct 2026.
+  Fix: Create an App and key in the Relay Dashboard and send it in the x-api-key header from your server, or through a proxy if you call from the browser.
+  https://docs.relay.link/references/api/api-keys#how-to-use-an-api-key
+
+BREAKING  Sends slippageTolerance as a decimal, percentage or negative number
+  src/relay.ts:20  slippageTolerance: "0.5",
+  Why: Since 23 Jun 2026, slippageTolerance must be an integer string from 0 to 10000 basis points. Other values are rejected with 400.
+  Fix: Send basis points as a string: 1% is "100", 0.5% is "50".
+  https://docs.relay.link/changelog
+
+BREAKING  Creates strict deposit addresses without refundTo
+  src/deposit.ts:3  useDepositAddress: true,
+  Why: refundTo is required for strict deposit addresses. Since 5 Oct 2026, a second deposit to an EXACT_INPUT strict address is refunded to refundTo instead of filling.
+  Fix: Always send refundTo, and tell users each strict address is for one deposit only.
+  https://docs.relay.link/features/deposit-addresses#strict-deposit-addresses
+
+DEADLINE  Uses GET /requests/v2 (or /requests), which Relay retires on 24 Nov 2026  (deadline 2026-11-24)
+  src/relay.ts:32  const r = await fetch(`${RELAY_API}/requests/v2?user=${wallet}&apiKey=sk_live_abc`);
+  Why: v2 has been rate-limited in stages since 1 Sep and its limit was halved on 15 Sep. After 24 Nov it stops working.
+  Fix: Move to GET /requests/v3 with an x-api-key header. Rename inTxs[].hash to txHash, read fees from data.fees, and treat failReason as null instead of "N/A".
+  https://docs.relay.link/references/api/api_guides/migrating-to-requests-v3
+
+WARNING  Puts the API key in a URL query string
+  src/relay.ts:32  const r = await fetch(`${RELAY_API}/requests/v2?user=${wallet}&apiKey=sk_live_abc`);
+  Why: Keys in URLs end up in logs, proxies and browser history.
+  Fix: Send the key in the x-api-key header, and filter /requests/v3 with apiKeyId instead of apiKey.
+  https://docs.relay.link/references/api/api-keys
+
+WARNING  Treats 'failure' as a final status
+  src/status.ts:1  const TERMINAL = ["success", "failure"];
+  Why: Only success and refund are final. A failure can be retried back to pending or refunded later. Stopping at failure shows users a wrong result (the polling traps named in Relay's docs).
+  Fix: Keep polling through failure. Stop only on success, refund, or a failure that has refundFailReason set.
+  https://docs.relay.link/references/api/get-intents-status-v3
+
+WARNING  Polls Relay faster than once per second
+  src/status.ts:12  }, 500);
+  Why: Fast polling burns your App's rate limit (200 requests a minute on default keys) and leads to 429s.
+  Fix: Poll every 2 to 5 seconds, or use webhooks or websockets instead.
+  https://docs.relay.link/references/api/api_core_concepts/handling-rate-limits
+
+WARNING  Tracks request status but never handles 'refund'
+  src/status.ts:5  const r = await fetch(`https://api.relay.link/intents/status/v3?requestId=${requestId}`);
+  Why: Refunds are a final status. Without handling them, users see a transfer stuck forever while their money is already back (the Phoenix and Atlas-Engine cases).
+  Fix: Treat refund as final: show where the money went (origin chain, possibly a different token) and that it's less the refund gas.
+  https://docs.relay.link/references/api/api_core_concepts/refunds
+
+WARNING  Uses the old @reservoir0x Relay packages
+  src/relay.ts:2  import { createClient } from "@reservoir0x/relay-sdk";
+  Why: The SDK and UI kit now ship as @relayprotocol packages. The old names don't get fixes for recent API changes.
+  Fix: Switch to @relayprotocol/relay-sdk and @relayprotocol/relay-kit-ui.
+  https://docs.relay.link/references/relay-kit/sdk/installation
+
+WARNING  Receives Relay webhooks without verifying the signature
+  src/webhook.js:3  if (req.body.event === "request.status.updated") updateOrder(req.body.data);
+  Why: Anyone who finds the endpoint can post fake status updates.
+  Fix: Verify X-Signature-SHA256: HMAC-SHA256 of `${timestamp}.${body}` with your API key. During key rotation, accept both keys.
+  https://docs.relay.link/references/api/api_guides/webhooks#verification
+
+INFO  Checks for a 'delayed' status, which no longer exists
+  src/status.ts:7  if (status === "delayed") console.log("slow fill");
+  Why: Current statuses are waiting, depositing, pending, submitted, success, failure and refund.
+  Fix: Handle depositing and submitted instead of delayed.
+  https://docs.relay.link/references/api/get-intents-status-v3
+
+INFO  Sends useExternalLiquidity or useFallbacks, which Relay ignores since 12 Oct 2026
+  src/relay.ts:21  useExternalLiquidity: true,
+  Why: Both are accepted but have no effect. Code that relies on them to change routing no longer does anything.
+  Fix: Remove them from your quote requests.
+  https://docs.relay.link/changelog
+
+INFO  Compares failReason with "N/A"
+  src/relay.ts:38  failed: q.data.failReason !== "N/A",
+  Why: /requests/v3 returns null instead of "N/A". This check silently changes meaning when you migrate.
+  Fix: Check for both null and "N/A", or only null after moving to v3.
+  https://docs.relay.link/references/api/api_guides/migrating-to-requests-v3
+
+INFO  Uses an older major version of the Relay SDK or UI kit
+  package.json:5  @relayprotocol/relay-kit-ui ^9.2.0 (current 12.x)
+  Why: Recent versions fix status handling (success no longer flips to error), deposit-address request IDs, and recipient validation.
+  Fix: Upgrade to the latest SDK 8.x and UI kit 12.x.
+  https://docs.relay.link/changelog
+
+INFO  Reads inTxs/outTxs .hash, renamed to .txHash in v3
+  src/relay.ts:36  deposit: q.data.inTxs[0].hash,
+  Why: On /requests/v3 the field is txHash, so .hash returns undefined.
+  Fix: Read txHash (and fall back to hash while you still call v2).
+  https://docs.relay.link/references/api/api_guides/migrating-to-requests-v3
+
+INFO  Reads v2-only response fields
+  src/relay.ts:37  fees: q.data.expandedPriceImpact,
+  Why: These fields are renamed or removed in /requests/v3.
+  Fix: expandedPriceImpact becomes data.fees, metadata moves to data.route, and currencies are single objects. See the field migration table.
+  https://docs.relay.link/references/api/api_guides/migrating-to-requests-v3#field-migration-reference
+
+Summary: 6 breaking, 1 with a deadline, 6 warnings, 6 notes
