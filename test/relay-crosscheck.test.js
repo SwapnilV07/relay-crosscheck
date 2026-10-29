@@ -248,8 +248,11 @@ test("CLI: bad arguments give a clear error and exit 2", () => {
 
 /* ---------- web app bundle ---------- */
 test("web: docs/crosscheck.js is up to date with src/", () => {
-  const { build, OUT } = require("../scripts/build-web");
-  assert.equal(fs.readFileSync(OUT, "utf8"), build(), "run: node scripts/build-web.js");
+  const { build, stamp, OUT, INDEX } = require("../scripts/build-web");
+  const bundle = build();
+  assert.equal(fs.readFileSync(OUT, "utf8"), bundle, "run: node scripts/build-web.js");
+  const html = fs.readFileSync(INDEX, "utf8");
+  assert.equal(html, stamp(html, bundle), "index.html must load the current app.css, app.js and crosscheck.js (run: node scripts/build-web.js)");
 });
 
 test("web: the browser bundle gives the same scan and health results as the command line", () => {

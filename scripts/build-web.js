@@ -42,16 +42,28 @@ function build() {
   return out;
 }
 
+/* index.html loads app.css, app.js and crosscheck.js with ?v=<content hash>, so a browser never mixes
+   a new page with an old cached script after an update. */
+function stamp(html, bundle) {
+  const crypto = require("crypto");
+  const hash = text => crypto.createHash("sha256").update(text).digest("hex").slice(0, 10);
+  const read = f => (f === "crosscheck.js" ? bundle : fs.readFileSync(path.join(ROOT, "docs", f), "utf8"));
+  return html.replace(/(src|href)="(app\.css|app\.js|crosscheck\.js)(\?v=[0-9a-f]+)?"/g, (_, attr, f) => `${attr}="${f}?v=${hash(read(f))}"`);
+}
+const INDEX = path.join(ROOT, "docs", "index.html");
+
 if (require.main === module) {
   const fresh = build();
+  const html = fs.readFileSync(INDEX, "utf8"), stamped = stamp(html, fresh);
   if (process.argv.includes("--check")) {
     const current = fs.existsSync(OUT) ? fs.readFileSync(OUT, "utf8") : "";
-    if (current !== fresh) { console.error("docs/crosscheck.js is out of date. Run: node scripts/build-web.js"); process.exit(1); }
+    if (current !== fresh || html !== stamped) { console.error("docs/crosscheck.js or the file versions in docs/index.html are out of date. Run: node scripts/build-web.js"); process.exit(1); }
     console.log("docs/crosscheck.js is up to date.");
   } else {
     fs.writeFileSync(OUT, fresh);
+    fs.writeFileSync(INDEX, stamped);
     console.log("Wrote " + path.relative(process.cwd(), OUT) + " (" + Math.round(fresh.length / 1024) + " KB)");
   }
 }
 
-module.exports = { build, OUT };
+module.exports = { build, stamp, OUT, INDEX };
