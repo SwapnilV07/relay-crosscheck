@@ -79,6 +79,7 @@
       b.setAttribute("aria-selected", on); b.tabIndex = on ? 0 : -1; p.hidden = !on;
     }
     $("#hint").textContent = HINTS[name];
+    showRoute(name === "ticket" && routeShown);
     $("#q").placeholder = PLACEHOLDER[name];
     moveSlider();
     if (focus) $("#tab-" + name).focus();
@@ -178,8 +179,17 @@
   }
   const OUTCOME = { success: "delivered", refund: "refund", failure: "failed", waiting: "waiting" };
   let routeShown = false;
+  // The route drawing belongs to a looked-up transfer: hidden until there is one, and only on the Transfer tab.
+  function showRoute(on) {
+    const fig = $("#route-art"); if (!fig || fig.hidden === !on) return;
+    fig.hidden = !on;
+    $(".hero-grid").classList.toggle("has-route", on);
+    if (on) { fig.classList.remove("reveal"); void fig.offsetWidth; fig.classList.add("reveal"); }
+    moveSlider();
+  }
   function routeFor(n, d) {
     routeShown = true;
+    showRoute(currentTab === "ticket");
     playRoute({ from: R.engine.chainName(n.originChainId), to: R.engine.chainName(n.destChainId), outcome: OUTCOME[n.status] || "moving", status: d.headline, detail: d.summary });
   }
 
@@ -200,6 +210,7 @@
       return;
     }
     setHash("ticket", q);
+    routeShown = false; showRoute(false); // a new lookup replaces the old route
     btn.disabled = true;
     put(out, spinner("Asking Relay's API…"));
     try {
@@ -569,6 +580,5 @@
   $("#ver").textContent = "Version " + R.version + ", " + R.scan.RULE_COUNT + " code checks, " + Object.keys(R.engine.ERRORS).length + " fail reasons explained";
   window.addEventListener("hashchange", readHash);
   selectTab("ticket");
-  setTimeout(() => routeShown || playRoute({ from: "Base", to: "Arbitrum", outcome: "delivered", status: "Delivered", detail: "An example transfer. Look one up to see its route." }), 350);
   readHash();
 })();

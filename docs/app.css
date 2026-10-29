@@ -45,9 +45,11 @@ code,.mono{font-family:var(--mono);font-size:.86em;overflow-wrap:anywhere}
 
 /* ---------- hero: the input is the page ---------- */
 .hero{padding:var(--s8) 0 var(--s6)}
-.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:var(--s7);align-items:start}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--s7);align-items:start}
+.hero-grid.has-route{grid-template-columns:minmax(0,1fr) 300px}
+.hero-text{max-width:720px}
 .hero h1{font:400 clamp(38px,6vw,60px)/1.02 var(--serif);letter-spacing:-.01em;margin:0 0 var(--s4);text-wrap:balance}
-@media (max-width:860px){.hero-grid{grid-template-columns:1fr;gap:0}.route-art{max-width:420px}}
+@media (max-width:860px){.hero-grid,.hero-grid.has-route{grid-template-columns:1fr;gap:0}.route-art{max-width:420px}}
 .lede{margin:0 0 var(--s6);color:var(--muted);font-size:17px;max-width:62ch}
 
 .ask-row{display:flex;gap:var(--s2);background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-box);padding:var(--s2);transition:border-color .2s,box-shadow .2s}
