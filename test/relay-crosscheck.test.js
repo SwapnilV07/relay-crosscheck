@@ -388,3 +388,13 @@ test("cost: reads the v3 shape (data.fees, platform) and explains expensive Ethe
   assert.equal(cb.sponsored, 1.0);
   assert.ok(Math.abs(cb.userPays - 2.2) < 1e-9);
 });
+
+test("scan: big repositories read Relay code first, so a file limit never cuts it", () => {
+  const core = require("../src/scan-core");
+  const paths = ["apps/web/a.ts", "docs/guide.ts", "zz/lib/relay/client.ts", "packages/ui/Button.tsx", "package.json", "src/bridge/quote.ts", "src/RelayStatus.tsx", "test/x.test.ts"];
+  const order = core.prioritize(paths.map(path => ({ path }))).map(x => x.path);
+  assert.deepEqual(order.slice(0, 2), ["zz/lib/relay/client.ts", "src/RelayStatus.tsx"], "anything named Relay comes first");
+  assert.equal(order[2], "package.json");
+  assert.equal(order[3], "src/bridge/quote.ts");
+  assert.ok(order.indexOf("apps/web/a.ts") < order.indexOf("docs/guide.ts"), "app source before docs");
+});

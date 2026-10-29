@@ -273,7 +273,7 @@
      Scan
      ===================================================================== */
   const GROUPS = [["breaking", "Breaks now"], ["deadline", "Breaks on a set date"], ["warning", "Should fix"], ["info", "Worth knowing"]];
-  const MAX_FILES = 2500;
+  const MAX_FILES = 6000; // GitHub links; local folders allow 10,000
   let scanRun = 0;
 
   $$("[data-scan]").forEach(b => b.addEventListener("click", () => { $("#q").value = b.dataset.scan; selectTab("scan"); runScanGithub(b.dataset.scan); }));
@@ -316,6 +316,9 @@
     const prefix = sub ? sub.replace(/\/$/, "") + "/" : "";
     let blobs = tree.tree.filter(t => t.type === "blob" && (!prefix || t.path.startsWith(prefix) || t.path === sub) && R.scan.wantPath(t.path, { includeTests: includeTests(), size: t.size || 0 }));
     const total = blobs.length, capped = total > MAX_FILES;
+    blobs = R.scan.prioritize(blobs);
+    const relayNamed = blobs.filter(b => R.scan.pathTier(b.path) === 0).length;
+    const skipped = capped ? blobs.slice(MAX_FILES).map(b => b.path) : [];
     if (capped) blobs = blobs.slice(0, MAX_FILES);
     const files = []; let done = 0, failed = 0, next = 0;
     const rawUrl = p => `https://raw.githubusercontent.com/${target.owner}/${target.repo}/${encodeURIComponent(ref).replace(/%2F/g, "/")}/${p.split("/").map(encodeURIComponent).join("/")}`;
@@ -333,7 +336,7 @@
     }
     await Promise.all(Array.from({ length: Math.min(12, blobs.length) }, worker));
     files.sort((a, b) => a.path.localeCompare(b.path));
-    return { files, failed, total, capped, ref, sub, name: info.full_name, truncatedTree: !!tree.truncated,
+    return { files, failed, total, capped, skipped, relayNamed, ref, sub, name: info.full_name, truncatedTree: !!tree.truncated,
       lineUrl: (p, line) => `https://github.com/${info.full_name}/blob/${encodeURIComponent(ref).replace(/%2F/g, "/")}/${p.split("/").map(encodeURIComponent).join("/")}#L${line}` };
   }
 
@@ -351,7 +354,7 @@
       const result = R.scan.scanFiles(got.files, { root: got.name });
       const where = got.name + (got.sub ? "/" + got.sub : "") + " @ " + got.ref;
       const notes = [];
-      if (got.capped) notes.push(`This repository has ${fmtNum(got.total)} source files; the first ${fmtNum(MAX_FILES)} were scanned. Scan a folder link to narrow it down.`);
+      if (got.capped) notes.push(`This repository has ${fmtNum(got.total)} source files, more than the ${fmtNum(MAX_FILES)} a browser scan reads. Every file with Relay in its path (${fmtNum(got.relayNamed)}) was read first, then bridge, quote and status code. ${fmtNum(got.skipped.length)} other files were skipped; paste a folder link to cover them.`);
       if (got.truncatedTree) notes.push("GitHub returned a partial file list because the repository is very large. Scan a folder link to cover the rest.");
       if (got.failed) notes.push(`${fmtNum(got.failed)} file${got.failed > 1 ? "s" : ""} couldn't be downloaded and were skipped.`);
       renderScan(result, { where, lineUrl: got.lineUrl, notes, shareable: true });
@@ -371,12 +374,12 @@
   async function scanLocal(entries, folderName) {
     const out = $("#scan-out"), run = ++scanRun;
     setHash("scan");
-    const keep = entries.filter(e => R.scan.wantPath(e.path, { includeTests: includeTests(), size: e.file.size }));
+    const keep = R.scan.prioritize(entries.filter(e => R.scan.wantPath(e.path, { includeTests: includeTests(), size: e.file.size })));
     put(out, spinner(`Reading ${fmtNum(keep.length)} files…`));
     const files = [];
-    for (const e of keep.slice(0, 5000)) { const f = R.scan.prepare(e.path, await e.file.text()); if (f) files.push(f); }
+    for (const e of keep.slice(0, 10000)) { const f = R.scan.prepare(e.path, await e.file.text()); if (f) files.push(f); }
     if (run !== scanRun) return;
-    const notes = keep.length > 5000 ? ["Only the first 5,000 source files were scanned."] : [];
+    const notes = keep.length > 10000 ? [`This folder has ${fmtNum(keep.length)} source files. Every file with Relay in its path was read first; ${fmtNum(keep.length - 10000)} others were skipped. Choose a smaller folder to cover them.`] : [];
     if (!keep.length) notes.push("No source files were found. The scanner reads JavaScript, TypeScript, Python, Go, Rust, Solidity and similar files, plus package.json.");
     renderScan(R.scan.scanFiles(files, { root: folderName }), { where: "the folder " + (folderName || "you chose"), notes, shareable: false });
   }

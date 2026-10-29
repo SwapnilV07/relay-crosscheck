@@ -400,9 +400,25 @@ function toSarif(result) {
   };
 }
 
+/* When a repository is too big to read every file, read the likely Relay code first.
+   Tier 0: the path mentions Relay. 1: package.json (shows the SDK version). 2: names that usually hold
+   bridge, quote or status code. 3: everything else, real source before tests and docs. */
+const RELAY_PATH = /relay|reservoir/i;
+const NEAR_PATH = /bridg|swap|quote|cross-?chain|xchain|intent|deposit|withdraw|solver|webhook|status|fill|route|chains?\b|api|client|sdk/i;
+function pathTier(p) {
+  if (RELAY_PATH.test(p)) return 0;
+  if (baseName(p) === "package.json") return 1;
+  if (NEAR_PATH.test(p)) return 2;
+  return /(^|\/)(src|app|apps|lib|packages|server|services)\//.test(p) ? 3 : 4;
+}
+/* items: anything with a .path; returns a new array, most likely Relay code first, stable within a tier. */
+function prioritize(items) {
+  return items.map((it, i) => ({ it, i, t: pathTier(it.path) })).sort((a, b) => a.t - b.t || a.i - b.i).map(x => x.it);
+}
+
 const RULE_COUNT = LINE_RULES.length + REPO_RULES.length;
 
-module.exports = { wantPath, prepare, scanFiles, toSarif, effectiveSeverity, SEV_RANK, EXTS, SKIP_DIRS, MAX_BYTES, RULE_COUNT };
+module.exports = { prioritize, pathTier, wantPath, prepare, scanFiles, toSarif, effectiveSeverity, SEV_RANK, EXTS, SKIP_DIRS, MAX_BYTES, RULE_COUNT };
 
 };
 __defs["engine"] = function (module, exports, require) {
