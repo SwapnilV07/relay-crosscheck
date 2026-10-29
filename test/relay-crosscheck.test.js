@@ -324,3 +324,61 @@ test("watch: opens each issue once and skips ones that already exist", async () 
     assert.equal(posts[0].auth, "Bearer t");
   } finally { delete process.env.GITHUB_API_URL; server.close(); }
 });
+
+/* ---------- "why was the fee so high?" ---------- */
+const walletReqs = () => JSON.parse(fs.readFileSync(FX("requests-v2-wallet.json"), "utf8")).requests;
+const NOW = Date.parse("2026-10-29T00:00:00Z");
+
+test("cost: splits a real transfer into gas, swap, Relay fee and app fee that add up to the total", () => {
+  const d = engine.diagnose(engine.normalize(walletReqs()[0]), NOW);
+  assert.equal(d.cost.phase, "actual");
+  assert.equal(d.cost.main.key, "swap");
+  const total = d.findings.find(f => /^Total cost/.test(f.label));
+  assert.match(total.label, /\$0\.04/);
+  assert.ok(Math.abs(d.cost.gross - 0.0382) < 0.001, "parts add up to the cost: " + d.cost.gross);
+  assert.match(d.userReply, /Most of that \(\$0\.03\) is the cost of converting USDC to ETH/);
+  assert.match(d.devReply, /cost \(actual, USD\): execution 0\.0042, swap 0\.0312, platform 0\.0024, app 0\.0000/);
+});
+
+test("cost: a gas top-up the user received is not blamed as a fee", () => {
+  for (const raw of walletReqs().slice(1)) {
+    const n = engine.normalize(raw);
+    const d = engine.diagnose(n, NOW);
+    assert.ok(Math.abs(d.cost.gasTopup - n.gasTopup.usd) < 1e-9);
+    const userCost = n.amountIn.usd - n.amountOut.usd - n.gasTopup.usd;
+    assert.ok(Math.abs(d.cost.gross - userCost) < 0.02, `parts ${d.cost.gross} vs cost ${userCost}`);
+    assert.ok(d.cost.parts.every(p => p.usd < 0.1), "no $2 'fee' left in any line");
+  }
+  const toBase = engine.diagnose(engine.normalize(walletReqs()[2]), NOW);
+  assert.match(toBase.userReply, /goes to the Ethereum network, not to us\. Ethereum's network fees are the highest/);
+  const sameToken = engine.diagnose(engine.normalize(walletReqs()[1]), NOW);
+  assert.match(sameToken.userReply, /cost of moving USDC from one network to another/);
+});
+
+test("cost: an app fee is named as the app's, not Relay's, and flagged when it makes the cost high", () => {
+  const raw = JSON.parse(JSON.stringify(walletReqs()[0]));
+  raw.data.metadata.currencyIn.amountUsd = "10"; raw.data.metadata.currencyOut.amountUsd = "8.40";
+  raw.data.expandedPriceImpact.actual = { swap: { usd: "-0.05" }, execution: { usd: "-0.04" }, relay: { usd: "-0.01" }, app: { usd: "-1.50" } };
+  const d = engine.diagnose(engine.normalize(raw), NOW);
+  assert.equal(d.cost.main.key, "app");
+  const f = d.findings.find(x => x.label === "Where the cost went");
+  assert.equal(f.tone, "warn");
+  assert.match(f.detail, /App fee \$1\.50/);
+  assert.match(d.userReply, /fee charged by the app or wallet you used\. That fee is set by the app, not by Relay/);
+});
+
+test("cost: reads the v3 shape (data.fees, platform) and explains expensive Ethereum delivery", () => {
+  const raw = JSON.parse(JSON.stringify(walletReqs()[0]));
+  raw.data.metadata.currencyOut.currency.chainId = 1; raw.data.outTxs[0].chainId = 1;
+  raw.data.metadata.currencyIn.amountUsd = "20"; raw.data.metadata.currencyOut.amountUsd = "16.80";
+  raw.data.expandedPriceImpact.actual = { swap: { usd: "-0.10" }, execution: { usd: "-3.00" }, relay: { usd: "-0.10" }, app: { usd: "0" }, sponsored: { usd: "0" } };
+  const v2 = engine.diagnose(engine.normalize(raw), NOW);
+  assert.equal(v2.cost.main.key, "execution");
+  assert.match(v2.userReply, /network fee for delivering your funds on Ethereum.*bigger share.*Base or Arbitrum costs less/);
+  const n = engine.normalize(raw);
+  n.fees = { quoted: null, actual: { swap: -0.10, execution: -3.00, platform: -0.10, app: 0, sponsored: 1.0 } };
+  const cb = engine.costBreakdown(n);
+  assert.equal(cb.parts.find(p => p.key === "platform").usd, 0.10);
+  assert.equal(cb.sponsored, 1.0);
+  assert.ok(Math.abs(cb.userPays - 2.2) < 1e-9);
+});

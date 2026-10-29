@@ -110,7 +110,9 @@ npx relay-crosscheck ticket 0x… --api-key $KEY        # search /requests/v3
 
 Without a key it uses the status API first, which isn't tightly rate-limited, and calls `/requests/v2` only for details or for transaction hashes. When v2 is rate-limited it stops and says so instead of retrying.
 
-The output covers the status in plain English, findings (fill time, total cost, gas top-up, a recipient that differs from the sender, stuck requests), a timeline with explorer links, next checks, and three drafts: a customer reply, a developer reply, and an escalation note when one is needed. Every customer reply ends with a reminder that support never asks for seed phrases.
+The output covers the status in plain English, findings (fill time, total cost, gas top-up, a recipient that differs from the sender, stuck requests), where the cost went, a timeline with explorer links, next checks, and three drafts: a customer reply, a developer reply, and an escalation note when one is needed. Every customer reply ends with a reminder that support never asks for seed phrases.
+
+**"Why was the fee so high?"** For a completed transfer, `ticket` splits the cost the way Relay reports it: network gas, swap cost, Relay's platform fee, and the app's own fee, plus anything the app sponsored. It names the biggest part in the customer reply (for example, "most of that is the fee charged by the app you used, not by Relay"). A gas top-up is taken out of the split, because Relay counts it inside the fee lines even though the user receives it. The reply also explains that the network fee the wallet charged on the sending chain is separate.
 
 ## Web app
 
@@ -139,7 +141,7 @@ It never opens the same issue twice. Adding the rule and moving the date in `wat
 npm test
 ```
 
-There are 30 tests. They cover the reason table against Relay's API schema, every scan rule on a broken and a correct integration, the health maths against Pump.fun's published figures, HTML escaping, every ticket lookup path, the web bundle (up to date, and the same results as the command line), and the watch (changelog parsing, new fail reasons, no duplicate issues). The ticket tests use responses recorded from the live API on 28 Oct 2026, and the watch tests use copies of Relay's docs from 29 Oct 2026.
+There are 34 tests. They cover the reason table against Relay's API schema, every scan rule on a broken and a correct integration, the health maths against Pump.fun's published figures, HTML escaping, every ticket lookup path, the web bundle (up to date, and the same results as the command line), and the watch (changelog parsing, new fail reasons, no duplicate issues), and the cost split (real transfers with and without a gas top-up, app fees, Ethereum delivery). The ticket tests use responses recorded from the live API on 28 Oct 2026, and the watch tests use copies of Relay's docs from 29 Oct 2026.
 
 ## Limits
 

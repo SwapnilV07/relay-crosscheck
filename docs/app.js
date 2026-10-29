@@ -138,7 +138,7 @@
       n.id ? h("span", {}, "Request ", h("button", { class: "chip mono", type: "button", title: "Copy request ID", onclick: () => copy(n.id, "Request ID") }, E.short(n.id))) : null,
       n.id ? link(E.relayTxUrl(n.id), "Open on relay.link") : null,
       h("span", {}, "Source: " + n.source));
-    const findings = h("ul", { class: "findings" }, d.findings.map(f => h("li", {}, h("span", { class: "ic " + f.tone, "aria-hidden": "true" }, TONE_ICON[f.tone] || "•"), h("div", {}, h("b", {}, f.label), h("p", {}, f.detail)))));
+    const findings = h("ul", { class: "findings" }, d.findings.filter(f => !(f.label === "Where the cost went" && d.cost)).map(f => h("li", {}, h("span", { class: "ic " + f.tone, "aria-hidden": "true" }, TONE_ICON[f.tone] || "•"), h("div", {}, h("b", {}, f.label), h("p", {}, f.detail)))));
     const checks = d.checks.length ? h("div", { class: "box" }, h("h3", {}, "Next checks"), h("ol", { class: "checks" }, d.checks.map(c => h("li", {}, c)))) : null;
     const tl = h("ul", { class: "timeline" }, d.timeline.map(t => h("li", {},
       h("b", {}, t.label), " ", h("span", { class: "t" }, t.ts ? E.fmtUtc(t.ts) : ""),
@@ -153,12 +153,29 @@
       if (m.slippagePct != null) rows.push(["Slippage allowed", m.slippagePct + "%"]);
       if (rows.length) money = h("div", { class: "box" }, h("h3", {}, "Amounts"), h("dl", { class: "money" }, rows.map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])));
     }
+    const costBox = renderCost(n, d);
     return h("div", {},
       head, h("p", { class: "summary" }, d.summary), route,
       h("div", { class: "cols" },
         h("div", {}, h("div", { class: "box" }, h("h3", {}, "Findings"), findings), checks),
-        h("div", {}, h("div", { class: "box" }, h("h3", {}, "Timeline"), tl), money)),
+        h("div", {}, h("div", { class: "box" }, h("h3", {}, "Timeline"), tl), money, costBox)),
       drafts([["Customer reply", d.userReply], ["Developer reply", d.devReply], d.escalation ? ["Escalation note", d.escalation] : null].filter(Boolean)));
+  }
+
+  /* "Where the cost went": Relay's own split of the cost, with the gas top-up taken out. */
+  function renderCost(n, d) {
+    const c = d.cost, E = R.engine;
+    if (!c || !(c.gross > 0)) return null;
+    const reason = d.costReason ? d.costReason.agent : "";
+    return h("div", { class: "box cost" },
+      h("h3", {}, "Where the cost went"),
+      h("ul", { class: "cost-parts" }, c.parts.map(p => h("li", { class: p === c.main ? "main" : null, title: p.what },
+        h("div", { class: "cost-row" }, h("span", {}, p.label), h("span", { class: "cost-val" }, E.fmtUsd(p.usd), h("small", {}, " " + Math.round(p.share * 100) + "%"))),
+        h("div", { class: "cost-bar", "aria-hidden": "true" }, h("i", { style: "width:" + Math.max(p.usd > 0 ? 1.5 : 0, p.share * 100).toFixed(1) + "%" })),
+        h("p", { class: "cost-what" }, p.what)))),
+      c.sponsored ? h("p", { class: "cost-note" }, "Paid by the app for the user: " + E.fmtUsd(c.sponsored)) : null,
+      h("p", { class: "cost-why" }, reason),
+      h("p", { class: "cost-note" }, "Not included: the network fee the user's wallet charged to send from " + E.chainName(n.originChainId) + ". That goes to the network, not Relay. " + (c.phase === "quoted" ? "These are the quoted figures; actual ones weren't available." : "These are the actual figures for this transfer.")));
   }
 
   let draftSeq = 0;

@@ -210,6 +210,65 @@ function normalizeStatus(r) {
   };
 }
 
+/* ---------- where the cost went ----------
+   Relay splits every request's cost into execution, swap, platform (called "relay" in v2) and app,
+   plus what the integrator sponsored. Negative values are costs to the user. Source: docs "Cost & Fee Structure". */
+const COST_PARTS = [
+  ["execution", "Network gas", "Gas to deliver the funds on the destination chain, plus Relay's small flat execution fee"],
+  ["swap", "Swap cost", "DEX fees, price impact and solver rebalancing when tokens are converted"],
+  ["platform", "Relay platform fee", "Relay's own fee: 0% for a plain bridge, 0.01% for stablecoin swaps, 0.06% for major tokens, 0.15% for other tokens"],
+  ["app", "App fee", "Added by the app or wallet the user transferred through; Relay doesn't set or keep it"],
+];
+function costBreakdown(n) {
+  const has = o => o && Object.keys(o).length;
+  const src = has(n.fees.actual) ? n.fees.actual : has(n.fees.quoted) ? n.fees.quoted : null;
+  if (!src) return null;
+  const parts = COST_PARTS.map(([key, label, what]) => ({ key, label, what, usd: Math.max(0, -(src[key] || 0)) }));
+  // A gas top-up is delivered to the user but Relay counts it inside a fee line (execution on the quote,
+  // sometimes swap on the actual). Take it out of whichever line holds it, so it isn't blamed as a cost.
+  const top = n.gasTopup && n.gasTopup.usd > 0 ? n.gasTopup.usd : 0;
+  let gasTopup = 0;
+  if (top) {
+    const holder = parts.slice().sort((x, y) => y.usd - x.usd)[0];
+    if (holder.usd >= top * 0.9) { holder.usd = Math.max(0, holder.usd - top); gasTopup = top; }
+  }
+  const gross = parts.reduce((a, p) => a + p.usd, 0);
+  const sponsored = Math.max(0, src.sponsored || 0);
+  parts.forEach(p => { p.share = gross ? p.usd / gross : 0; });
+  const main = gross > 0 ? parts.slice().sort((a, b) => b.usd - a.usd)[0] : null;
+  return { phase: src === n.fees.actual ? "actual" : "quoted", parts, gross, sponsored, gasTopup, userPays: Math.max(0, gross - sponsored), main };
+}
+/* Plain-English reason for the cost: { agent, user }. */
+function costReason(cb, n) {
+  if (!cb || !cb.main) return null;
+  const m = cb.main, pc = Math.round(m.share * 100) + "%";
+  const dest = chainName(n.destChainId);
+  const valIn = n.amountIn && n.amountIn.usd;
+  const small = valIn != null && valIn < 50 && cb.userPays / valIn > 0.01;
+  const sameToken = n.amountIn && n.amountOut && n.amountIn.symbol === n.amountOut.symbol;
+  const pair = n.amountIn && n.amountOut ? n.amountIn.symbol + " to " + n.amountOut.symbol : "the tokens";
+  let agent, user;
+  if (m.key === "app") {
+    agent = "Mostly the app's own fee (" + fmtUsd(m.usd) + ", " + pc + "). The integrator sets it; Relay doesn't receive it. Point fee questions about it to the app.";
+    user = "Most of that (" + fmtUsd(m.usd) + ") is the fee charged by the app or wallet you used. That fee is set by the app, not by Relay.";
+  } else if (m.key === "execution") {
+    agent = "Mostly network gas on " + dest + " plus the flat execution fee (" + fmtUsd(m.usd) + ", " + pc + "). Gas costs about the same for any amount" + (small ? ", so it's a big share of a small transfer like this one." : ".") + (n.destChainId === 1 ? " Ethereum mainnet gas is the most expensive of any chain." : "");
+    user = "Most of that (" + fmtUsd(m.usd) + ") is the network fee for delivering your funds on " + dest + ". It costs about the same whatever the amount" + (small ? ", so on a small transfer it's a bigger share." : ".") + (n.destChainId === 1 ? " Ethereum's network fees are the highest of any chain, so sending to a lower-cost network such as Base or Arbitrum costs less." : "");
+  } else if (m.key === "swap" && sameToken) {
+    agent = "Mostly the cross-chain cost of moving " + n.amountIn.symbol + " (" + fmtUsd(m.usd) + ", " + pc + "): solver rebalancing and liquidity between networks. Larger amounts and less-used routes cost more.";
+    user = "Most of that (" + fmtUsd(m.usd) + ") is the cost of moving " + n.amountIn.symbol + " from one network to another.";
+  } else if (m.key === "swap") {
+    agent = "Mostly swap cost converting " + pair + " (" + fmtUsd(m.usd) + ", " + pc + "): DEX fees and price impact. It grows with the amount and with less liquid tokens, and actual can differ from the quote within the slippage allowed.";
+    user = "Most of that (" + fmtUsd(m.usd) + ") is the cost of converting " + pair + ": exchange fees and the price movement while swapping.";
+  } else {
+    agent = "Mostly Relay's platform fee (" + fmtUsd(m.usd) + ", " + pc + "), which depends on the token pair (0% to 0.15%).";
+    user = "Most of that (" + fmtUsd(m.usd) + ") is Relay's service fee, which is between 0% and 0.15% depending on the tokens.";
+  }
+  if (cb.gasTopup) agent += " The " + fmtUsd(cb.gasTopup) + " gas top-up is excluded: the user received it.";
+  if (cb.sponsored > 0) { agent += " The integrator sponsored " + fmtUsd(cb.sponsored) + " of the fees."; user += " The app also covered " + fmtUsd(cb.sponsored) + " of the fees for you."; }
+  return { agent, user };
+}
+
 /* ---------- diagnose ---------- */
 const STATUS_TEXT = {
   waiting: "Waiting for the deposit", depositing: "Deposit seen, fill not started", pending: "Fill in progress",
@@ -241,6 +300,12 @@ function diagnose(n, nowMs) {
   const valIn = n.amountIn && n.amountIn.usd, valOut = n.amountOut && n.amountOut.usd;
   const userCost = n.status === "success" && valIn != null && valOut != null ? valIn - valOut - (topUsd || 0) : null;
   if (userCost != null) F.push({ tone: userCost / valIn > 0.03 ? "warn" : "ok", label: "Total cost " + fmtUsd(userCost) + " (" + (userCost / valIn * 100).toFixed(2) + "%)", detail: "Sent " + fmtUsd(valIn) + ", received " + fmtUsd(valOut) + (topUsd ? " plus " + fmtUsd(topUsd) + " of gas" : "") + ". This covers swap, gas and Relay fees together." });
+  const cost = n.status === "success" ? costBreakdown(n) : null;
+  const reason = costReason(cost, n);
+  if (cost && cost.gross > 0) {
+    const appHeavy = cost.main && cost.main.key === "app" && userCost != null && valIn && userCost / valIn > 0.03;
+    F.push({ tone: appHeavy ? "warn" : "info", label: "Where the cost went", detail: cost.parts.filter(p => p.usd > 0.00005).map(p => p.label + " " + fmtUsd(p.usd)).join(" · ") + (cost.sponsored ? " · Paid by the app " + fmtUsd(cost.sponsored) : "") + ". " + (reason ? reason.agent : "") });
+  }
   if (n.status === "success" && totQ != null && totA != null) {
     const shifted = fq && fa && Object.keys({ ...fq, ...fa }).some(k => Math.abs((fq[k] || 0) - (fa[k] || 0)) > 0.25);
     const same = Math.abs(totQ - totA) <= Math.max(0.02, Math.abs(totQ) * 0.02);
@@ -307,11 +372,11 @@ function diagnose(n, nowMs) {
   if (err && n.status !== "success" && err.cat === "escalate") { escalate = true; why = why || n.failReason + " needs Relay review."; }
   if (escalate) sev = "bad";
 
-  const ctx = { n, route, err, rerr, fillSec, idleSec, ageSec, escalate, why, userCost };
+  const ctx = { n, route, err, rerr, fillSec, idleSec, ageSec, escalate, why, userCost, cost, reason };
   return {
     sev, headline, summary, findings: F, checks, escalate,
     userReply: draftUser(ctx), devReply: draftDev(ctx), escalation: escalate ? draftEscalation(ctx, checks) : null,
-    timeline: timeline(n), money: money(n, totQ, totA),
+    timeline: timeline(n), money: money(n, totQ, totA), cost, costReason: reason,
   };
 }
 
@@ -348,7 +413,8 @@ function draftUser(c) {
   switch (n.status) {
     case "success":
       lines.push("Good news: it completed. " + (n.amountOut ? fmtAmt(n.amountOut) + " was" : "Your funds were") + " delivered on " + chainName(n.destChainId) + (c.fillSec != null ? (c.fillSec < 2 ? " within a second or two of your deposit" : " about " + fmtDur(c.fillSec) + " after your deposit") : "") + ".");
-      if (c.userCost != null) lines.push("You sent about " + fmtUsd(n.amountIn.usd) + " and received about " + fmtUsd(n.amountOut.usd) + (n.gasTopup && n.gasTopup.usd ? " plus " + fmtUsd(n.gasTopup.usd) + " of gas" : "") + ", so the total cost (swap, network gas and fees together) was about " + fmtUsd(c.userCost) + ".");
+      if (c.userCost != null) lines.push("You sent about " + fmtUsd(n.amountIn.usd) + " and received about " + fmtUsd(n.amountOut.usd) + (n.gasTopup && n.gasTopup.usd ? " plus " + fmtUsd(n.gasTopup.usd) + " of gas" : "") + ", so the total cost (swap, network gas and fees together) was about " + fmtUsd(c.userCost) + "." + (c.reason ? " " + c.reason.user : ""));
+      if (c.userCost != null) lines.push("The network fee your wallet showed when you sent the transaction is separate: it goes to the " + chainName(n.originChainId) + " network, not to us." + (n.originChainId === 1 ? " Ethereum's network fees are the highest of any chain, which is often the biggest cost of a transfer from Ethereum." : ""));
       if (n.gasTopup) lines.push("You also received " + fmtAmt(n.gasTopup) + " for gas on " + chainName(n.gasTopup.chainId || n.destChainId) + ". That's the gas top-up you chose, so it shows up in the cost breakdown, but it's yours.");
       if (n.outTxs[0]) lines.push("", "You can see it here: " + link(n.outTxs[0]));
       lines.push("", "If you don't see it in your wallet:", "1. Switch your wallet to the " + chainName(n.destChainId) + " network.", "2. Check you're looking at " + (n.recipient ? "the wallet ending in " + n.recipient.slice(-4) : "the receiving wallet") + ".", "3. If the token still doesn't show, add it manually as a custom token.");
@@ -384,6 +450,7 @@ function draftDev(c) {
   if (n.inTxs[0]) L.push("deposit: " + n.inTxs.map(t => t.hash).join(", "));
   if (n.outTxs[0]) L.push((n.status === "refund" ? "refund: " : "fill: ") + n.outTxs.map(t => t.hash).join(", "));
   if (c.fillSec != null) L.push("deposit → fill: " + fmtDur(c.fillSec));
+  if (c.cost && c.cost.gross > 0) L.push("cost (" + c.cost.phase + ", USD): " + c.cost.parts.map(p => p.key + " " + p.usd.toFixed(4)).join(", ") + (c.cost.sponsored ? ", sponsored " + c.cost.sponsored.toFixed(4) : "") + (c.cost.gasTopup ? " (gas top-up of " + c.cost.gasTopup.toFixed(4) + " already taken out)" : "") + (c.reason ? "\n" + c.reason.agent : ""));
   L.push("");
   if (c.err) L.push("What it means: " + c.err.dev);
   if (c.rerr) L.push("Refund: " + c.rerr.dev);
@@ -413,4 +480,4 @@ function draftEscalation(c, checks) {
   return L.join("\n");
 }
 
-module.exports = { parseInput, diagnose, normalize, ERRORS, CHAINS, OWNER, OWNER_GROUPS, OWNER_LABEL, ownerOf, errInfo, chainName, txUrl, relayTxUrl, explorerName, fmtUsd, fmtAmt, fmtDur, fmtUtc, short, isHash, isAddr, toMs };
+module.exports = { costBreakdown, COST_PARTS, parseInput, diagnose, normalize, ERRORS, CHAINS, OWNER, OWNER_GROUPS, OWNER_LABEL, ownerOf, errInfo, chainName, txUrl, relayTxUrl, explorerName, fmtUsd, fmtAmt, fmtDur, fmtUtc, short, isHash, isAddr, toMs };
