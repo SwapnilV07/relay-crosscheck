@@ -19,7 +19,10 @@
     return el;
   }
   const link = (href, text) => h("a", { href, target: "_blank", rel: "noopener" }, text || href);
-  const put = (box, ...nodes) => { box.replaceChildren(...nodes.flat().filter(Boolean)); };
+  const put = (box, ...nodes) => {
+    box.replaceChildren(...nodes.flat().filter(Boolean));
+    box.classList.remove("reveal"); void box.offsetWidth; box.classList.add("reveal");
+  };
   const spinner = text => h("div", { class: "status" }, h("span", { class: "spinner", "aria-hidden": "true" }), h("span", {}, text));
   const alertBox = (kind, title, ...body) => h("div", { class: "alert " + (kind || ""), role: kind === "err" ? "alert" : null }, title ? h("b", {}, title) : null, ...body);
 
@@ -56,14 +59,52 @@
 
   /* ---------- tabs and shareable links (#ticket=0x…, #scan=owner/repo, #health=pumpfun) ---------- */
   const TABS = ["ticket", "scan", "health"];
+  const HINTS = {
+    ticket: "Looks up one transfer on Relay and drafts the replies.",
+    scan: "Reads a public repository and lists what Relay's changes will break.",
+    health: "Drop an integrator's export below, or try Pump.fun's published data.",
+  };
+  const PLACEHOLDER = { ticket: "0x… request ID, transaction hash or wallet", scan: "owner/repo or a github.com link", health: "0x… or owner/repo" };
+  let currentTab = "ticket";
+  function moveSlider() {
+    const b = $("#tab-" + currentTab), slider = $(".mode-slider");
+    if (!b || !slider) return;
+    slider.style.setProperty("--x", b.offsetLeft + "px");
+    slider.style.setProperty("--w", b.offsetWidth + "px");
+  }
   function selectTab(name, focus) {
+    currentTab = name;
     for (const t of TABS) {
       const b = $("#tab-" + t), p = $("#panel-" + t), on = t === name;
       b.setAttribute("aria-selected", on); b.tabIndex = on ? 0 : -1; p.hidden = !on;
     }
+    $("#hint").textContent = HINTS[name];
+    $("#q").placeholder = PLACEHOLDER[name];
+    moveSlider();
     if (focus) $("#tab-" + name).focus();
   }
-  $$(".tabs button").forEach(b => {
+  window.addEventListener("resize", moveSlider);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(moveSlider);
+
+  // One input for everything: what you paste decides the tool.
+  const looksLikeRepo = v => /github\.com\//i.test(v) || /^[\w.-]+\/[\w.-]+(\/|$)/.test(v);
+  function detect(raw) {
+    const v = String(raw || "").trim();
+    if (R.engine.isHash(v) || R.engine.isAddr(v)) return "ticket";
+    if (looksLikeRepo(v)) return "scan";
+    return null;
+  }
+  $("#q").addEventListener("input", () => { const t = detect($("#q").value); if (t && t !== currentTab) { selectTab(t); setHash(t); } });
+  $("#ask").addEventListener("submit", e => {
+    e.preventDefault();
+    const v = $("#q").value.trim();
+    const t = detect(v) || (v.startsWith("0x") ? "ticket" : currentTab);
+    if (t !== currentTab) selectTab(t);
+    if (t === "ticket") runTicket(v);
+    else if (t === "scan") runScanGithub(v);
+    else put($("#health-out"), alertBox("", "Integrator health works from an export, not a pasted value.", h("p", {}, "Drop a CSV or JSON file in the box above, or try Pump.fun's published data.")));
+  });
+  $$(".modes button").forEach(b => {
     b.addEventListener("click", () => { selectTab(b.dataset.tab); setHash(b.dataset.tab); });
     b.addEventListener("keydown", e => {
       const i = TABS.indexOf(b.dataset.tab);
@@ -82,9 +123,64 @@
     const tab = m[1], value = m[2] ? decodeURIComponent(m[2]) : "";
     selectTab(tab);
     if (!value) return;
-    if (tab === "ticket") { $("#ticket-q").value = value; runTicket(value); }
-    if (tab === "scan") { if (value === "example") runScanExample(); else { $("#scan-q").value = value; runScanGithub(value); } }
+    if (tab === "ticket") { $("#q").value = value; runTicket(value); }
+    if (tab === "scan") { if (value === "example") runScanExample(); else { $("#q").value = value; runScanGithub(value); } }
     if (tab === "health" && value === "pumpfun") runHealthExample();
+  }
+
+  /* =====================================================================
+     The route drawing: shows how a transfer went, from chain to chain
+     ===================================================================== */
+  let routeRaf = 0;
+  const easeInOut = t => (t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+  const MARKS = { check: "M305 150 l5 5 l9 -10", cross: "M306.5 144.5 l11 11 m0 -11 l-11 11" };
+  function playRoute({ from, to, outcome, status, detail }) {
+    const path = $("#rt-trail"), dot = $("#rt-dot"); if (!path) return;
+    const len = path.getTotalLength();
+    $("#rt-from-label").textContent = from; $("#rt-to-label").textContent = to;
+    $("#rt-status").textContent = ""; $("#rt-detail").textContent = outcome === "waiting" ? "" : "Following the transfer…";
+    const fromN = $("#rt-from"), toN = $("#rt-to"), mark = $("#rt-mark");
+    fromN.setAttribute("class", "rt-node on"); toN.setAttribute("class", "rt-node"); mark.setAttribute("d", "");
+    dot.setAttribute("class", "rt-dot"); dot.style.opacity = 1;
+    cancelAnimationFrame(routeRaf);
+    // Each leg moves the dot between two points on the curve (0 = origin chain, 1 = destination chain).
+    const legs = { delivered: [[0, 1, 1300]], refund: [[0, .62, 800], [.62, 0, 900]], failed: [[0, .55, 900]], moving: [[0, .5, 900]], waiting: [] }[outcome] || [];
+    let reach = 0;
+    const place = t => {
+      const p = path.getPointAtLength(len * t);
+      dot.setAttribute("cx", p.x.toFixed(1)); dot.setAttribute("cy", p.y.toFixed(1));
+      reach = Math.max(reach, t);
+      path.style.strokeDasharray = (len * reach).toFixed(1) + " " + len.toFixed(1);
+    };
+    const finish = () => {
+      $("#rt-status").textContent = status; $("#rt-detail").textContent = detail;
+      if (outcome === "delivered") { toN.setAttribute("class", "rt-node ok"); mark.setAttribute("d", MARKS.check); fromN.setAttribute("class", "rt-node ok"); dot.style.opacity = 0; }
+      if (outcome === "refund") { fromN.setAttribute("class", "rt-node warn"); dot.setAttribute("class", "rt-dot warn"); }
+      if (outcome === "failed") { dot.setAttribute("class", "rt-dot bad"); toN.setAttribute("class", "rt-node bad"); mark.setAttribute("d", MARKS.cross); }
+      if (outcome === "moving" || outcome === "waiting") dot.setAttribute("class", "rt-dot wait");
+    };
+    place(0); reach = 0; path.style.strokeDasharray = "0 " + len;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches || !legs.length) {
+      for (const [, b] of legs) place(b);
+      if (legs.length) reach = Math.max(...legs.map(l => Math.max(l[0], l[1]))), place(legs[legs.length - 1][1]);
+      return finish();
+    }
+    let i = 0, start = 0;
+    const step = now => {
+      if (!start) start = now;
+      const [a, b, ms] = legs[i], k = Math.min(1, (now - start) / ms);
+      place(a + (b - a) * easeInOut(k));
+      if (k < 1) { routeRaf = requestAnimationFrame(step); return; }
+      if (++i < legs.length) { start = 0; routeRaf = requestAnimationFrame(step); return; }
+      finish();
+    };
+    routeRaf = requestAnimationFrame(step);
+  }
+  const OUTCOME = { success: "delivered", refund: "refund", failure: "failed", waiting: "waiting" };
+  let routeShown = false;
+  function routeFor(n, d) {
+    routeShown = true;
+    playRoute({ from: R.engine.chainName(n.originChainId), to: R.engine.chainName(n.destChainId), outcome: OUTCOME[n.status] || "moving", status: d.headline, detail: d.summary });
   }
 
   /* =====================================================================
@@ -94,12 +190,11 @@
   const TONE_ICON = { ok: "✓", warn: "!", bad: "✕", info: "i" };
   let ticketRun = 0;
 
-  $("#ticket-form").addEventListener("submit", e => { e.preventDefault(); runTicket($("#ticket-q").value); });
-  $$("[data-ticket]").forEach(b => b.addEventListener("click", () => { $("#ticket-q").value = b.dataset.ticket; runTicket(b.dataset.ticket); }));
+  $$("[data-ticket]").forEach(b => b.addEventListener("click", () => { $("#q").value = b.dataset.ticket; selectTab("ticket"); runTicket(b.dataset.ticket); }));
 
   async function runTicket(raw) {
     const q = String(raw || "").trim();
-    const out = $("#ticket-out"), btn = $("#ticket-form .primary"), run = ++ticketRun;
+    const out = $("#ticket-out"), btn = $("#go"), run = ++ticketRun;
     if (!R.engine.isHash(q) && !R.engine.isAddr(q)) {
       put(out, alertBox("err", "That doesn't look like something Relay can look up.", "Paste a request ID or transaction hash (0x followed by 64 characters), or a wallet address (0x followed by 40)."));
       return;
@@ -114,6 +209,7 @@
       const webNote = n => n.replace(/\(use --api-key\)/g, "(add an API key under \"Use a Relay API key\")").replace(/Pass --api-key to/g, "Add an API key to");
       const notes = found.notes.length ? h("ul", { class: "notes" }, found.notes.map(n => h("li", {}, webNote(n))), h("li", {}, "Looked up via " + found.source + ".")) : h("ul", { class: "notes" }, h("li", {}, "Looked up via " + found.source + "."));
       if (!results.length) { put(out, alertBox("", "No Relay request found for this value.", notes)); return; }
+      routeFor(results[0].request, results[0].diagnosis);
       if (results.length === 1) { put(out, renderDiagnosis(results[0].request, results[0].diagnosis), notes); return; }
       put(out,
         h("p", { class: "muted" }, fmtNum(results.length) + " requests found for this wallet, newest first. Open one to see the details and replies."),
@@ -180,9 +276,8 @@
   const MAX_FILES = 2500;
   let scanRun = 0;
 
-  $("#scan-form").addEventListener("submit", e => { e.preventDefault(); runScanGithub($("#scan-q").value); });
-  $$("[data-scan]").forEach(b => b.addEventListener("click", () => { $("#scan-q").value = b.dataset.scan; runScanGithub(b.dataset.scan); }));
-  $$("[data-scan-example]").forEach(b => b.addEventListener("click", runScanExample));
+  $$("[data-scan]").forEach(b => b.addEventListener("click", () => { $("#q").value = b.dataset.scan; selectTab("scan"); runScanGithub(b.dataset.scan); }));
+  $$("[data-scan-example]").forEach(b => b.addEventListener("click", () => { $("#q").value = ""; selectTab("scan"); runScanExample(); }));
   const includeTests = () => $("#scan-tests").checked;
 
   function parseRepo(input) {
@@ -243,7 +338,7 @@
   }
 
   async function runScanGithub(input) {
-    const out = $("#scan-out"), btn = $("#scan-form .primary"), run = ++scanRun;
+    const out = $("#scan-out"), btn = $("#go"), run = ++scanRun;
     const target = parseRepo(input);
     if (!target) { put(out, alertBox("err", "That isn't a GitHub repository link.", "Use owner/repo (for example relayprotocol/relay-kit) or a github.com link to a repository or one of its folders.")); return; }
     setHash("scan", target.owner + "/" + target.repo + (target.rest.length ? "/tree/" + target.rest.join("/") : ""));
@@ -352,7 +447,7 @@
       l.text ? h("span", { class: "src", title: l.text }, l.text) : null,
       l.detail ? h("span", { class: "muted" }, l.detail) : null);
     return h("article", { class: "finding " + f.severity },
-      h("div", { class: "meta" }, h("span", { class: "pill " + f.severity }, f.severity === "deadline" ? "Deadline" : f.severity === "info" ? "Note" : f.severity), due ? h("span", {}, due) : null, h("span", { class: "mono" }, f.rule)),
+      h("div", { class: "meta" }, h("span", { class: "pill " + f.severity }, { breaking: "Breaks now", deadline: "Deadline", warning: "Should fix", info: "Note" }[f.severity] || f.severity), due ? h("span", {}, due) : null, h("span", { class: "mono" }, f.rule)),
       h("h4", {}, f.title),
       h("p", {}, h("b", {}, "Why it matters: "), f.why),
       h("p", {}, h("b", {}, "Fix: "), f.fix),
@@ -404,6 +499,7 @@
   }
 
   function runHealthExample() {
+    selectTab("health");
     setHash("health", "pumpfun");
     $("#health-name").value = "Pump.fun"; $("#health-dir").value = "buy";
     healthState = { loaded: R.health.loadCounts(R.examples.pumpfunDailyCsv), source: "Source: Pump.fun's published A/B export, reduced to daily counts by OpenChainBench", example: true };
@@ -467,7 +563,9 @@
     el.addEventListener("drop", e => onDrop(e.dataTransfer));
   }
 
-  $("#ver").textContent = "Version " + R.version + " · " + R.scan.RULE_COUNT + " scan rules · " + Object.keys(R.engine.ERRORS).length + " fail reasons mapped";
+  $("#ver").textContent = "Version " + R.version + ", " + R.scan.RULE_COUNT + " code checks, " + Object.keys(R.engine.ERRORS).length + " fail reasons explained";
   window.addEventListener("hashchange", readHash);
+  selectTab("ticket");
+  setTimeout(() => routeShown || playRoute({ from: "Base", to: "Arbitrum", outcome: "delivered", status: "Delivered", detail: "An example transfer. Look one up to see its route." }), 350);
   readHash();
 })();

@@ -1244,9 +1244,9 @@ function render(a, { name = "Integrator", source = "", generatedAt = new Date().
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Relay health report: ${esc(name)}</title>
 <style>
-:root{--bg:#f5f6f4;--panel:#fff;--fg:#15201b;--muted:#5d6a63;--line:#d8dfdb;--accent:#0d6b62;--o-relay:#2f6fd6;--o-int:#c77b12;--o-user:#7a5bbf;--o-market:#4f9a6b;--o-token:#b04a5a;--o-unknown:#b9c1bd;color-scheme:light}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1513;--panel:#161e1b;--fg:#e3ebe7;--muted:#98a69f;--line:#2b3733;--accent:#4cc3b3;--o-relay:#6c9cf0;--o-int:#e3a14a;--o-user:#a98be6;--o-market:#74c393;--o-token:#e07b8b;--o-unknown:#56605b;color-scheme:dark}}
-:root[data-theme="dark"]{--bg:#0f1513;--panel:#161e1b;--fg:#e3ebe7;--muted:#98a69f;--line:#2b3733;--accent:#4cc3b3;--o-relay:#6c9cf0;--o-int:#e3a14a;--o-user:#a98be6;--o-market:#74c393;--o-token:#e07b8b;--o-unknown:#56605b;color-scheme:dark}
+:root{--bg:#f5f6f4;--panel:#fff;--fg:#15201b;--muted:#5d6a63;--line:#d8dfdb;--accent:#2747d9;--o-relay:#2f6fd6;--o-int:#c77b12;--o-user:#7a5bbf;--o-market:#4f9a6b;--o-token:#b04a5a;--o-unknown:#b9c1bd;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1513;--panel:#161e1b;--fg:#e3ebe7;--muted:#98a69f;--line:#2b3733;--accent:#8199ff;--o-relay:#6c9cf0;--o-int:#e3a14a;--o-user:#a98be6;--o-market:#74c393;--o-token:#e07b8b;--o-unknown:#56605b;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1513;--panel:#161e1b;--fg:#e3ebe7;--muted:#98a69f;--line:#2b3733;--accent:#8199ff;--o-relay:#6c9cf0;--o-int:#e3a14a;--o-user:#a98be6;--o-market:#74c393;--o-token:#e07b8b;--o-unknown:#56605b;color-scheme:dark}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .wrap{max-width:980px;margin:0 auto;padding:24px max(16px,env(safe-area-inset-left)) 48px max(16px,env(safe-area-inset-right))}
 h1{font-size:24px;margin:0 0 4px}h2{font-size:17px;margin:0 0 12px}.muted{color:var(--muted)}
