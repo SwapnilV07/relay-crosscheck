@@ -29,7 +29,7 @@ test("diagnoses a real successful transfer with a gas top-up", () => {
   assert.equal(n.status, "success");
   assert.equal(d.sev, "ok");
   assert.equal(d.escalation, null);
-  assert.ok(d.findings.some(f => /gas top-up/i.test(f.label)));
+  assert.ok(d.findings.some(f => /gas top-up/i.test(f.label + " " + f.detail)));
   assert.match(d.userReply, /gas top-up/);
 });
 
@@ -335,6 +335,8 @@ test("cost: splits a real transfer into gas, swap, Relay fee and app fee that ad
   assert.equal(d.cost.main.key, "swap");
   const total = d.findings.find(f => /^Total cost/.test(f.label));
   assert.match(total.label, /\$0\.04/);
+  assert.match(total.detail, /Mostly the swap from USDC to ETH \(\$0\.03\): exchange fees and price impact\./);
+  assert.equal(d.findings.filter(f => /cost|top-up|categor/i.test(f.label)).length, 1, "cost is explained in one finding");
   assert.ok(Math.abs(d.cost.gross - 0.0382) < 0.001, "parts add up to the cost: " + d.cost.gross);
   assert.match(d.userReply, /Most of that \(\$0\.03\) is the cost of converting USDC to ETH/);
   assert.match(d.devReply, /cost \(actual, USD\): execution 0\.0042, swap 0\.0312, platform 0\.0024, app 0\.0000/);
@@ -348,6 +350,9 @@ test("cost: a gas top-up the user received is not blamed as a fee", () => {
     const userCost = n.amountIn.usd - n.amountOut.usd - n.gasTopup.usd;
     assert.ok(Math.abs(d.cost.gross - userCost) < 0.02, `parts ${d.cost.gross} vs cost ${userCost}`);
     assert.ok(d.cost.parts.every(p => p.usd < 0.1), "no $2 'fee' left in any line");
+    const total = d.findings.find(f => /^Total cost/.test(f.label));
+    assert.match(total.detail, /of gas the user chose to receive \(gas top-up\)/);
+    assert.ok(!d.findings.some(f => /Includes a gas top-up|Costs moved/.test(f.label)), "no duplicate cost findings");
   }
   const toBase = engine.diagnose(engine.normalize(walletReqs()[2]), NOW);
   assert.match(toBase.userReply, /goes to the Ethereum network, not to us\. Ethereum's network fees are the highest/);
@@ -361,9 +366,10 @@ test("cost: an app fee is named as the app's, not Relay's, and flagged when it m
   raw.data.expandedPriceImpact.actual = { swap: { usd: "-0.05" }, execution: { usd: "-0.04" }, relay: { usd: "-0.01" }, app: { usd: "-1.50" } };
   const d = engine.diagnose(engine.normalize(raw), NOW);
   assert.equal(d.cost.main.key, "app");
-  const f = d.findings.find(x => x.label === "Where the cost went");
+  const f = d.findings.find(x => /^Total cost/.test(x.label));
   assert.equal(f.tone, "warn");
-  assert.match(f.detail, /App fee \$1\.50/);
+  assert.match(f.detail, /App fee \$1\.50 · Swap cost \$0\.05 · Network gas \$0\.04/);
+  assert.match(f.detail, /Mostly the app's own fee, which Relay doesn't set or keep\./);
   assert.match(d.userReply, /fee charged by the app or wallet you used\. That fee is set by the app, not by Relay/);
 });
 
